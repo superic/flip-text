@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ox-Turn Reader</title>
+  <meta name="description" content="A book reader that tests alternating-direction (boustrophedon) reading.">
+  <meta name="theme-color" content="#f6eedb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ox-Turn">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Library -->
+  <main id="library" class="screen scroll" hidden>
+    <div class="wrap">
+      <header class="lib-header">
+        <h1>Ox-Turn Reader</h1>
+        <p class="tagline">Lines that turn like an ox plowing a field.</p>
+      </header>
+      <div id="install-area"></div>
+      <section id="continue" hidden></section>
+      <h2 class="section-title">Your books</h2>
+      <div id="shelf" class="shelf" aria-live="polite"><p class="muted">Loading books…</p></div>
+      <div class="lib-actions">
+        <a class="btn btn-wide" href="#/stats">Reading stats</a>
+      </div>
+      <p class="lib-foot">
+        <button type="button" class="linkish" id="how-install">How to install</button>
+      </p>
+    </div>
+  </main>
+
+  <!-- Reader -->
+  <section id="reader" class="screen reader" hidden>
+    <div id="stage" class="stage" aria-live="off"></div>
+    <div id="reader-ui" class="reader-ui">
+      <div class="bar top-bar">
+        <button type="button" class="icon-btn" data-act="library" aria-label="Back to Library">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg><span>Library</span>
+        </button>
+        <div class="bar-title" id="ui-title"></div>
+        <button type="button" class="icon-btn" data-act="contents" aria-label="Contents">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>
+        </button>
+        <button type="button" class="icon-btn aa" data-act="settings" aria-label="Settings">Aa</button>
+      </div>
+      <div class="bar bottom-bar">
+        <div class="ui-chapter" id="ui-chapter"></div>
+        <div class="ui-progress" id="ui-progress"></div>
+        <div class="ui-track"><div class="ui-fill" id="ui-fill"></div></div>
+      </div>
+    </div>
+
+    <div id="contents-sheet" class="sheet-wrap" hidden>
+      <div class="backdrop" data-close></div>
+      <div class="sheet sheet-full" role="dialog" aria-label="Contents">
+        <div class="sheet-head"><h2>Contents</h2><button type="button" class="btn" data-close>Done</button></div>
+        <ol class="toc scroll" id="toc"></ol>
+      </div>
+    </div>
+
+    <div id="settings-sheet" class="sheet-wrap" hidden>
+      <div class="backdrop" data-close></div>
+      <div class="sheet" role="dialog" aria-label="Reading settings">
+        <div class="sheet-head"><h2>Reading settings</h2><button type="button" class="btn" data-close>Done</button></div>
+        <div class="sheet-body scroll" id="settings-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section id="stats" class="screen scroll" hidden>
+    <div class="wrap" id="stats-body"></div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Off-screen container used to measure line breaks -->
+  <div id="measure" class="measure text" aria-hidden="true"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Ox-Turn Reader",
+  "short_name": "Ox-Turn",
+  "description": "A book reader where the lines turn back and forth, like an ox plowing a field.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6eedb",
+  "theme_color": "#f6eedb",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

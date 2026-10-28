@@ -1,0 +1,18 @@
+[
+  {
+    "id": "sherlock",
+    "title": "The Adventures of Sherlock Holmes",
+    "author": "Arthur Conan Doyle",
+    "file": "books/sherlock.json",
+    "chapterCount": 12,
+    "wordCount": 104347
+  },
+  {
+    "id": "treasure-island",
+    "title": "Treasure Island",
+    "author": "Robert Louis Stevenson",
+    "file": "books/treasure-island.json",
+    "chapterCount": 34,
+    "wordCount": 67655
+  }
+]
