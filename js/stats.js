@@ -1,6 +1,6 @@
 // Reading stats screen + "Send my results".
-import { summarize, resetStats } from './metrics.js';
-import { STYLES } from './settings.js';
+import { summarize, resetStats, getRecords } from './metrics.js';
+import { STYLES, fontOf } from './settings.js';
 import { getPosition } from './books.js';
 import { toast } from './toast.js';
 
@@ -126,6 +126,15 @@ export function resultsText() {
   });
   lines.push('');
   lines.push(`Total: ${sum.totals.pages} pages, ${fmtInt(sum.totals.words)} words, ${fmtDuration(sum.totals.ms)} reading`);
+  // Font(s) the measured pages were read in. Records from before the font
+  // picker existed have no `font`: they were all read in the built-in font.
+  const fonts = {};
+  getRecords().forEach((r) => { const id = r.font || 'book'; fonts[id] = (fonts[id] || 0) + 1; });
+  const fontList = Object.entries(fonts).sort((a, b) => b[1] - a[1]);
+  if (fontList.length) {
+    lines.push(`Font${fontList.length === 1 ? '' : 's'}: ` +
+      fontList.map(([id, n]) => `${fontOf(id).label} (${n} page${n === 1 ? '' : 's'})`).join(', '));
+  }
   if (bookIndex.length) {
     lines.push('');
     lines.push('Books:');

@@ -9,8 +9,8 @@
 import { layoutChapter, pageHTML, pageIndexFor, headingHTML } from './layout.js';
 import { loadBook, getPosition, savePosition } from './books.js';
 import {
-  getSettings, updateSettings, onSettingsChange, lineHeightPx,
-  STYLES, SIZES, SPACINGS, THEMES,
+  getSettings, updateSettings, onSettingsChange, lineHeightPx, fontReady,
+  STYLES, SIZES, SPACINGS, FONTS, THEMES,
 } from './settings.js';
 import * as metrics from './metrics.js';
 
@@ -30,6 +30,7 @@ let uiOpen = false;
 let sheetOpen = null;
 let active = false;
 let exitHandler = () => {};
+let pendingFont = null; // last font tapped in settings, while it loads
 
 const TURN_MS = 450; // duration of a full visible sweep (0 to 90 degrees)
 const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -104,16 +105,24 @@ function init() {
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
 
-  onSettingsChange((s, prev) => {
+  onSettingsChange(async (s, prev) => {
     if (!active || !book) return;
-    if (s.fontSize !== prev.fontSize || s.spacing !== prev.spacing) {
+    if (sheetOpen === 'settings') renderSettings();
+    if (s.font !== prev.font) {
+      metrics.invalidatePage();
+      // Lines must be measured in the font that will render them, never in a
+      // fallback, so wait for the face before re-paginating. Only the latest
+      // choice wins if the reader taps several fonts quickly.
+      await fontReady(s.font, s.fontSize);
+      if (!active || !book || getSettings().font !== s.font) return;
+      relayout();
+    } else if (s.fontSize !== prev.fontSize || s.spacing !== prev.spacing) {
       metrics.invalidatePage();
       relayout();
     } else if (s.style !== prev.style) {
       metrics.invalidatePage();
       for (const l of Object.values(leaves)) fill(l, l.ref);
     }
-    if (sheetOpen === 'settings') renderSettings();
   });
 }
 
@@ -145,6 +154,10 @@ export async function openReader(bookEntry, { onExit }) {
     }
     if (!active || entry.id !== bookEntry.id) return;
   }
+  // A saved web font may not be loaded yet on a fresh launch; measuring before
+  // it arrives would break lines for the fallback font.
+  await fontReady();
+  if (!active || entry.id !== bookEntry.id) return;
   const p = getPosition(entry.id);
   anchor = { ci: clamp(p.chapterIdx, 0, book.chapters.length - 1), pi: p.paraIdx, wi: p.wordIdx };
   geom = null;
@@ -171,7 +184,7 @@ function measureGeom() {
     height: Math.floor(r.height),
     lh: lineHeightPx(),
     stageW: els.stage.clientWidth,
-    key: `${Math.floor(r.width)}x${Math.floor(r.height)}:${getSettings().fontSize}:${lineHeightPx()}`,
+    key: `${Math.floor(r.width)}x${Math.floor(r.height)}:${getSettings().font}:${getSettings().fontSize}:${lineHeightPx()}`,
   };
 }
 
@@ -640,6 +653,10 @@ function renderSettings() {
     '<div class="set-group"><div class="set-label">Line spacing</div><div class="seg">' +
     SPACINGS.map((sp) => `<button type="button" data-spacing="${sp.value}" aria-pressed="${sp.value === s.spacing}">${sp.label}</button>`).join('') +
     '</div></div>' +
+    '<div class="set-group"><div class="set-label">Font</div><div class="font-opts">' +
+    FONTS.map((f) => `<button type="button" class="font-opt" data-font="${f.id}" aria-pressed="${f.id === s.font}" style="font-family:${esc(f.stack)}">` +
+      `<span class="name">${esc(f.label)}</span><span class="sample" aria-hidden="true">Quick brown fox</span></button>`).join('') +
+    '</div></div>' +
     '<div class="set-group"><div class="set-label">Theme</div><div class="seg">' +
     THEMES.map((t) => `<button type="button" class="theme-${t.id}" data-theme="${t.id}" aria-pressed="${t.id === s.theme}">${t.label}</button>`).join('') +
     '</div></div>';
@@ -654,7 +671,13 @@ function onSettingsClick(e) {
     const i = clamp(SIZES.indexOf(s.fontSize) + Number(b.dataset.size), 0, SIZES.length - 1);
     updateSettings({ fontSize: SIZES[i] });
   } else if (b.dataset.spacing) updateSettings({ spacing: Number(b.dataset.spacing) });
-  else if (b.dataset.theme) updateSettings({ theme: b.dataset.theme });
+  else if (b.dataset.font) {
+    // Load the face first so the page never shows a moment of fallback text
+    // squeezed into lines measured for another font.
+    const id = b.dataset.font;
+    pendingFont = id;
+    fontReady(id, s.fontSize).then(() => { if (pendingFont === id) updateSettings({ font: id }); });
+  } else if (b.dataset.theme) updateSettings({ theme: b.dataset.theme });
 }
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
