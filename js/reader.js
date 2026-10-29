@@ -6,7 +6,7 @@
 // cur over toward the spine, revealing next; a backward turn unfolds prev back
 // over cur. The curl geometry and shading live in curl.js. When a turn
 // settles the leaves just swap roles and only one leaf has to be re-rendered.
-import { layoutChapter, pageHTML, pageIndexFor, headingHTML } from './layout.js';
+import { layoutChapter, pageHTML, pageIndexFor, headingHTML, chapterLabel, unitOf } from './layout.js';
 import { flipPunctuation } from './punct.js';
 import { loadBook, getPosition, savePosition } from './books.js';
 import {
@@ -43,8 +43,8 @@ function init() {
   if (els) return;
   els = {
     reader: $('reader'), stage: $('stage'), ui: $('reader-ui'), measure: $('measure'),
-    title: $('ui-title'), chapter: $('ui-chapter'), progress: $('ui-progress'), fill: $('ui-fill'),
-    contents: $('contents-sheet'), toc: $('toc'), settings: $('settings-sheet'), settingsBody: $('settings-body'),
+    label: $('ui-label'), chapter: $('ui-chapter'), page: $('ui-page'), left: $('ui-left'), scrub: $('ui-scrub'),
+    contents: $('contents-sheet'), toc: $('toc'), tocSub: $('toc-sub'), settings: $('settings-sheet'), settingsBody: $('settings-body'),
   };
   const mk = () => {
     const leaf = document.createElement('div');
@@ -86,9 +86,22 @@ function init() {
     jumpTo({ ci: +b.dataset.ci, pi: 0, wi: 0 });
   });
   els.settingsBody.addEventListener('click', onSettingsClick);
+  els.settingsBody.addEventListener('input', onSettingsInput);
+  els.settingsBody.addEventListener('change', onSettingsInput);
+
+  // Position slider in the bottom bar: dragging previews "Page X of Y",
+  // letting go jumps to that page of the chapter.
+  els.scrub.addEventListener('input', () => scrubPreview(+els.scrub.value - 1));
+  els.scrub.addEventListener('change', () => {
+    const ref = leaves.cur.ref;
+    if (!ref || ref.end) return;
+    const page = getLayout(ref.ci).pages[+els.scrub.value - 1];
+    if (page && page.index !== ref.pi) jumpTo({ ci: ref.ci, pi: page.anchor.pi, wi: page.anchor.wi });
+  });
 
   document.addEventListener('keydown', (e) => {
     if (!active || sheetOpen) { if (e.key === 'Escape' && sheetOpen) closeSheet(); return; }
+    if (e.target && e.target.tagName === 'INPUT') return; // arrow keys move the slider
     if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); turnForward(); }
     else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); turnBackward(); }
     else if (e.key === 'Escape') showUI(!uiOpen);
@@ -137,7 +150,6 @@ export async function openReader(bookEntry, { onExit }) {
   entry = bookEntry;
   showUI(false);
   closeSheet();
-  els.title.textContent = entry.title;
   if (!book || book.id !== entry.id) {
     book = null;
     layouts = new Map();
@@ -285,7 +297,11 @@ function pageShown() {
   }
   const page = pageOf(ref);
   anchor = { ci: ref.ci, pi: page.anchor.pi, wi: page.anchor.wi };
-  savePosition(entry.id, { chapterIdx: anchor.ci, paraIdx: anchor.pi, wordIdx: anchor.wi, pct: progressPct(ref) });
+  const ch = book.chapters[ref.ci];
+  savePosition(entry.id, {
+    chapterIdx: anchor.ci, paraIdx: anchor.pi, wordIdx: anchor.wi, pct: progressPct(ref),
+    chapter: [ch.number, ch.title].filter(Boolean).join(' · '),
+  });
   metrics.startPage({
     key: `${book.id}|${ref.ci}|${page.anchor.pi}|${page.anchor.wi}`,
     bookId: book.id, chapterIdx: ref.ci, words: page.words,
@@ -306,18 +322,38 @@ function updateUI() {
   if (!book || !leaves.cur.ref) return;
   const ref = leaves.cur.ref;
   if (ref.end) {
+    els.label.textContent = '';
     els.chapter.textContent = 'The End';
-    els.progress.textContent = '100% · finished';
-    els.fill.style.width = '100%';
+    els.page.textContent = 'Finished';
+    els.left.textContent = '';
+    setScrub(1, 1, true);
     return;
   }
   const ch = book.chapters[ref.ci];
-  els.chapter.textContent = [ch.number, ch.title].filter(Boolean).join('. ');
-  const left = getLayout(ref.ci).pages.length - 1 - ref.pi;
-  const pct = progressPct(ref);
-  const leftTxt = left === 0 ? 'last page in chapter' : left === 1 ? '1 page left in chapter' : `${left} pages left in chapter`;
-  els.progress.textContent = `${Math.floor(pct)}% · ${leftTxt}`;
-  els.fill.style.width = pct + '%';
+  els.label.textContent = chapterLabel(book, ref.ci);
+  els.chapter.textContent = ch.title || '';
+  const n = getLayout(ref.ci).pages.length;
+  setScrub(ref.pi + 1, n, n < 2);
+  scrubPreview(ref.pi);
+}
+
+function setScrub(value, max, disabled) {
+  els.scrub.max = String(max);
+  els.scrub.value = String(value);
+  els.scrub.disabled = disabled;
+}
+
+/** Bottom-bar text and slider fill for page index i of the current chapter. */
+function scrubPreview(i) {
+  const ref = leaves.cur.ref;
+  if (!ref || ref.end) return;
+  const n = getLayout(ref.ci).pages.length;
+  const left = n - 1 - i;
+  const unit = unitOf(book);
+  els.page.textContent = `Page ${i + 1} of ${n}`;
+  els.left.textContent = left === 0 ? `Last page in ${unit}` : `${left} page${left === 1 ? '' : 's'} left in ${unit}`;
+  els.scrub.style.setProperty('--pct', (n > 1 ? (i / (n - 1)) * 100 : 100) + '%');
+  els.scrub.setAttribute('aria-valuetext', `Page ${i + 1} of ${n}`);
 }
 
 /* ------------------------------------------------------------ page turn */
@@ -603,53 +639,71 @@ function closeSheet() {
 }
 
 function renderToc() {
-  const curCi = leaves.cur.ref && !leaves.cur.ref.end ? leaves.cur.ref.ci : -1;
+  const curRef = leaves.cur.ref && !leaves.cur.ref.end ? leaves.cur.ref : null;
+  const n = book.chapters.length;
+  const unit = unitOf(book);
+  const count = `${n} ${unit === 'story' ? (n === 1 ? 'story' : 'stories') : unit + (n === 1 ? '' : 's')}`;
+  els.tocSub.innerHTML = `${esc(entry.title)} <span style="white-space:nowrap">· ${count}</span>`;
   let html = '';
   let part = null;
   book.chapters.forEach((ch, ci) => {
     if (ch.part && ch.part !== part) html += `<li class="part">${esc(ch.part)}</li>`;
     part = ch.part;
-    html += `<li><button type="button" data-ci="${ci}" class="${ci === curCi ? 'current' : ''}">` +
-      `<span class="n">${esc(ch.number || ci + 1)}</span><span>${esc(ch.title || 'Chapter ' + (ci + 1))}</span></button></li>`;
+    const cur = curRef && curRef.ci === ci;
+    // How far into the current chapter, by pages.
+    const pill = cur ? `<span class="pill">${Math.round((curRef.pi / Math.max(1, getLayout(ci).pages.length)) * 100)}%</span>` : '';
+    html += `<li><button type="button" data-ci="${ci}" class="${cur ? 'current' : ''}"${cur ? ' aria-current="true"' : ''}>` +
+      `<span class="n">${esc(ch.number || ci + 1)}</span><span class="tt">${esc(ch.title || 'Chapter ' + (ci + 1))}</span>${pill}</button></li>`;
   });
   els.toc.innerHTML = html;
 }
 
 function stylePreview(id, punct) {
-  const a = ['The ox plows one', 'furrow, then turns'];
-  const b = ['and plows the next', 'one back again.'];
-  const flip = (l) => l.split(' ').reverse().map((w) => (punct ? flipPunctuation(w) : w)).join(' ');
-  const l2 = id === 'words' ? flip(a[1]) : a[1];
-  const l4 = id === 'words' ? flip(b[1]) : b[1];
+  const l1 = 'The ox plows one furrow,';
+  const l2 = 'turns, then comes back';
+  const l3 = 'and plows the next one';
+  const t2 = id === 'words' ? l2.split(' ').reverse().map((w) => (punct ? flipPunctuation(w) : w)).join(' ') : l2;
   const rev = id === 'normal' ? '' : ' rev';
-  return `<div class="preview text style-${id}">` +
-    `<div class="ln">${a[0]}</div><div class="ln${rev}">${l2}</div>` +
-    `<div class="ln">${b[0]}</div><div class="ln last${rev}">${l4}</div></div>`;
+  return `<div class="preview text style-${id}" aria-hidden="true">` +
+    `<div class="ln">${l1}</div><div class="ln${rev}">${t2}</div><div class="ln">${l3}</div></div>`;
+}
+
+const LINE_ICONS = {
+  1.3: 'M2 5h14M2 9h14M2 13h14',
+  1.5: 'M2 3.5h14M2 9h14M2 14.5h14',
+  1.75: 'M2 2h14M2 9h14M2 16h14',
+};
+
+function sizeSteps(idx) {
+  return SIZES.map((_, i) => `<span class="${i < idx ? 'on' : i === idx ? 'cur' : ''}"></span>`).join('');
 }
 
 function renderSettings() {
   const s = getSettings();
   const sizeIdx = SIZES.indexOf(s.fontSize);
   els.settingsBody.innerHTML =
-    '<div class="set-group"><div class="set-label">Flip style</div><div class="style-opts">' +
+    '<section class="set-group"><h3 class="set-label">Flip style</h3><div class="style-opts">' +
     STYLES.map((st) => `<button type="button" class="style-opt" data-style="${st.id}" aria-pressed="${st.id === s.style}">` +
-      `<div class="name">${st.label}</div>${stylePreview(st.id, s.punct)}</button>`).join('') +
-    '</div>' + punctToggle(s) + '</div>' +
-    '<div class="set-group"><div class="set-label">Text size</div><div class="size-row">' +
-    `<button type="button" class="small" data-size="-1" aria-label="Smaller text" ${sizeIdx <= 0 ? 'disabled' : ''}>A−</button>` +
-    `<div class="val">${s.fontSize} pt</div>` +
-    `<button type="button" class="big" data-size="1" aria-label="Larger text" ${sizeIdx >= SIZES.length - 1 ? 'disabled' : ''}>A+</button>` +
-    '</div></div>' +
-    '<div class="set-group"><div class="set-label">Line spacing</div><div class="seg">' +
-    SPACINGS.map((sp) => `<button type="button" data-spacing="${sp.value}" aria-pressed="${sp.value === s.spacing}">${sp.label}</button>`).join('') +
-    '</div></div>' +
-    '<div class="set-group"><div class="set-label">Font</div><div class="font-opts">' +
-    FONTS.map((f) => `<button type="button" class="font-opt" data-font="${f.id}" aria-pressed="${f.id === s.font}" style="font-family:${esc(f.stack)}">` +
-      `<span class="name">${esc(f.label)}</span><span class="sample" aria-hidden="true">Quick brown fox</span></button>`).join('') +
-    '</div></div>' +
-    '<div class="set-group"><div class="set-label">Theme</div><div class="seg">' +
+      `<span class="name">${st.label}</span>${stylePreview(st.id, s.punct)}</button>`).join('') +
+    '</div>' + punctToggle(s) + '</section>' +
+    '<section class="set-group"><div class="set-row"><h3 class="set-label">Text size</h3>' +
+    `<span class="set-val" id="size-val">${s.fontSize} pt</span></div><div class="size-row">` +
+    `<button type="button" class="small" data-size="-1" aria-label="Smaller text" ${sizeIdx <= 0 ? 'disabled' : ''}>A</button>` +
+    `<div class="steps"><div class="steps-vis" id="size-steps">${sizeSteps(sizeIdx)}</div>` +
+    `<input type="range" min="0" max="${SIZES.length - 1}" step="1" value="${sizeIdx}" data-size-range aria-label="Text size" aria-valuetext="${s.fontSize} pt"></div>` +
+    `<button type="button" class="big" data-size="1" aria-label="Larger text" ${sizeIdx >= SIZES.length - 1 ? 'disabled' : ''}>A</button>` +
+    '</div></section>' +
+    '<section class="set-group"><h3 class="set-label">Line spacing</h3><div class="seg" role="group" aria-label="Line spacing">' +
+    SPACINGS.map((sp) => `<button type="button" data-spacing="${sp.value}" aria-pressed="${sp.value === s.spacing}">` +
+      `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="${LINE_ICONS[sp.value]}"/></svg>${sp.label}</button>`).join('') +
+    '</div></section>' +
+    '<section class="set-group"><h3 class="set-label">Font</h3><div class="font-opts">' +
+    FONTS.map((f) => `<button type="button" class="font-opt" data-font="${f.id}" aria-pressed="${f.id === s.font}">` +
+      `<span class="aa" style="font-family:${esc(f.stack)}" aria-hidden="true">Aa</span><span class="name">${esc(f.label)}</span></button>`).join('') +
+    '</div></section>' +
+    '<section class="set-group"><h3 class="set-label">Theme</h3><div class="theme-opts">' +
     THEMES.map((t) => `<button type="button" class="theme-${t.id}" data-theme="${t.id}" aria-pressed="${t.id === s.theme}">${t.label}</button>`).join('') +
-    '</div></div>';
+    '</div></section>';
 }
 
 /** On/off switch for punctuation flipping; only live under Reversed words. */
@@ -657,8 +711,21 @@ function punctToggle(s) {
   const live = s.style === 'words';
   return `<button type="button" class="toggle-row" role="switch" data-punct="1" aria-checked="${s.punct}" ${live ? '' : 'disabled'}>` +
     '<span class="toggle-text"><span class="toggle-name">Flip punctuation</span>' +
-    `<span class="toggle-note">${live ? 'Move punctuation to read right to left' : 'Only for Reversed words'}</span></span>` +
+    `<span class="toggle-note">${live ? 'Commas and periods face right to left' : 'Only used with Reversed words'}</span></span>` +
     '<span class="switch" aria-hidden="true"></span></button>';
+}
+
+/** Text size slider: dragging moves the dots, letting go applies the size. */
+function onSettingsInput(e) {
+  const r = e.target.closest('[data-size-range]');
+  if (!r) return;
+  const i = clamp(+r.value, 0, SIZES.length - 1);
+  if (e.type === 'input') {
+    $('size-steps').innerHTML = sizeSteps(i);
+    $('size-val').textContent = SIZES[i] + ' pt';
+  } else if (SIZES[i] !== getSettings().fontSize) {
+    updateSettings({ fontSize: SIZES[i] });
+  }
 }
 
 function onSettingsClick(e) {

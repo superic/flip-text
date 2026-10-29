@@ -5,6 +5,7 @@
     "author": "Arthur Conan Doyle",
     "file": "books/sherlock.json",
     "chapterCount": 12,
+    "unit": "story",
     "wordCount": 104347
   },
   {
@@ -13,6 +14,7 @@
     "author": "Robert Louis Stevenson",
     "file": "books/treasure-island.json",
     "chapterCount": 34,
+    "unit": "chapter",
     "wordCount": 67655
   }
 ]

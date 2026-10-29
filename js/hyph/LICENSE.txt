@@ -1,0 +1,21 @@
+en-us.js in this folder holds the American English hyphenation patterns from
+hyph-en-us.tex (hyph-utf8 project, https://github.com/hyphenation/tex-hyphen),
+converted to a JavaScript string without changing any pattern.
+
+The original file's header:
+
+  title: Hyphenation patterns for American English
+  copyright: Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken
+  notice: This file is part of the hyph-utf8 package.
+      See http://www.hyphenation.org/tex for more information.
+  version: 2005-05-30
+  licence:
+      Copying and distribution of this file, with or without modification,
+      are permitted in any medium without royalty provided the copyright
+      notice and this notice are preserved.
+  hyphenmins: left 2, right 3
+
+The patterns are Frank Liang's and Donald Knuth's original TeX patterns
+(hyphen.tex) extended by Gerard D.C. Kuiken (ushyphmax.tex).
+
+The hyphenation code that reads them (js/hyphenate.js) is part of this app.

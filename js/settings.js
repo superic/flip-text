@@ -15,9 +15,9 @@ export const SPACINGS = [
   { value: 1.75, label: 'Roomy' },
 ];
 export const THEMES = [
-  { id: 'paper', label: 'Paper', color: '#f6eedb' },
-  { id: 'white', label: 'White', color: '#f3f3f1' },
-  { id: 'dark', label: 'Dark', color: '#0f0f0e' },
+  { id: 'paper', label: 'Paper', color: '#F5EFE4' },
+  { id: 'white', label: 'White', color: '#FFFFFF' },
+  { id: 'dark', label: 'Dark', color: '#161513' },
 ];
 
 // Reading fonts. Everything but the built-in stack is self-hosted in fonts/
@@ -35,8 +35,8 @@ export const FONTS = [
 // punct: move punctuation across on Reversed words lines (see punct.js).
 const DEFAULTS = { style: 'mirrored', punct: true, fontSize: 20, spacing: 1.5, font: 'book', theme: 'paper' };
 
-function sanitize(s) {
-  const out = { ...DEFAULTS, ...(s && typeof s === 'object' ? s : {}) };
+function sanitize(s, defaults = DEFAULTS) {
+  const out = { ...defaults, ...(s && typeof s === 'object' ? s : {}) };
   if (!STYLES.some((x) => x.id === out.style)) out.style = DEFAULTS.style;
   if (typeof out.punct !== 'boolean') out.punct = DEFAULTS.punct;
   if (!SIZES.includes(out.fontSize)) out.fontSize = DEFAULTS.fontSize;
@@ -46,7 +46,18 @@ function sanitize(s) {
   return out;
 }
 
-let current = sanitize(load(KEYS.settings, null));
+// New readers start in Literata. Anyone who has used the app before (saved
+// settings, a book opened or a measured page) keeps the built-in font unless
+// they chose another; the choice is saved at once so it never changes later.
+let current = (() => {
+  const saved = load(KEYS.settings, null);
+  if (saved) return sanitize(saved);
+  const pages = load(KEYS.records, []);
+  const isNew = load(KEYS.last, null) == null && !(Array.isArray(pages) && pages.length);
+  const s = sanitize(null, isNew ? { ...DEFAULTS, font: 'literata' } : DEFAULTS);
+  save(KEYS.settings, s);
+  return s;
+})();
 const listeners = new Set();
 
 export const getSettings = () => current;

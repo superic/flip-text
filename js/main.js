@@ -73,8 +73,9 @@ const isStandalone = () => navigator.standalone === true ||
   (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 let deferredPrompt = null;
 
-const SHARE_ICON = '<svg class="share-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share button" role="img">' +
-  '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2"/></svg>';
+const SHARE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>';
+const PLUS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -93,19 +94,22 @@ function renderInstall(force = false) {
   if (isStandalone()) { area.innerHTML = ''; how.hidden = true; return; }
   how.hidden = false;
   const dismissed = load(KEYS.installDismissed, false);
+  let icon = SHARE_ICON;
   let html = '';
   if (deferredPrompt && (force || !dismissed)) {
-    html = '<strong>Install Ox-Turn</strong>Put the reader on your Home Screen so it keeps your place and works offline.' +
-      '<br><button type="button" class="btn btn-primary" data-install>Install</button>';
+    icon = PLUS_ICON;
+    html = '<p>Keep your place and read offline: install Ox-Turn on this device.</p>' +
+      '<button type="button" class="btn btn-primary" data-install>Install</button>';
   } else if (isIOS && (force || !dismissed)) {
-    html = '<strong>Add Ox-Turn to your Home Screen</strong>' +
-      `so it keeps your place: tap the Share button ${SHARE_ICON} then <b>“Add to Home Screen”</b>.`;
+    html = '<p>Keep your place: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>';
   } else if (force) {
-    html = '<strong>How to install</strong>Open your browser’s menu and choose <b>“Add to Home Screen”</b> or <b>“Install app”</b>.';
+    icon = PLUS_ICON;
+    html = '<p>To install, open your browser’s menu and choose <strong>Add to Home Screen</strong> or <strong>Install app</strong>.</p>';
   }
   if (!html) { area.innerHTML = ''; return; }
-  area.innerHTML = `<div class="install-card">${html}<button type="button" class="close" aria-label="Dismiss">×</button></div>`;
-  area.querySelector('.close').onclick = () => { save(KEYS.installDismissed, true); area.innerHTML = ''; };
+  area.innerHTML = `<section class="tip" aria-label="Install"><div class="tip-ico">${icon}</div><div class="tip-body">${html}</div>` +
+    `<button type="button" class="tip-x" aria-label="Dismiss">${CLOSE_ICON}</button></section>`;
+  area.querySelector('.tip-x').onclick = () => { save(KEYS.installDismissed, true); area.innerHTML = ''; };
   const btn = area.querySelector('[data-install]');
   if (btn) {
     btn.onclick = async () => {

@@ -41,3 +41,13 @@ export function flipPunctuation(word) {
   if (!DASHES.test(word)) return flipPart(word);
   return word.split(DASHES).reverse().map((p, i) => (i % 2 ? [...p].reverse().join('') : flipPart(p))).join('');
 }
+
+/**
+ * The first half of a word hyphenated across two lines ("predomi-",
+ * "high-", "observer—"): its line-end hyphen or dash is treated like
+ * trailing punctuation and moves to the left ("-predomi").
+ */
+export function flipFragment(head) {
+  if (head.endsWith('-')) return '-' + flipPunctuation(head.slice(0, -1));
+  return flipPunctuation(head);
+}

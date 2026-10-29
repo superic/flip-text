@@ -18,7 +18,7 @@ export function loadBook(entry) {
   if (!bookCache.has(entry.id)) {
     const p = fetch(entry.file)
       .then((r) => { if (!r.ok) throw new Error('book ' + r.status); return r.json(); })
-      .then((b) => prepareBook(b))
+      .then((b) => { b.unit = b.unit || entry.unit; return prepareBook(b); })
       .catch((e) => { bookCache.delete(entry.id); throw e; });
     bookCache.set(entry.id, p);
   }
@@ -34,6 +34,7 @@ export function getPosition(id) {
     paraIdx: Number.isInteger(p.paraIdx) ? p.paraIdx : 0,
     wordIdx: Number.isInteger(p.wordIdx) ? p.wordIdx : 0,
     pct: typeof p.pct === 'number' ? p.pct : 0,
+    chapter: typeof p.chapter === 'string' ? p.chapter : null, // "I · A Scandal in Bohemia"
     ts: p.ts || 0,
   };
 }

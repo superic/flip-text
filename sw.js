@@ -1,8 +1,8 @@
-// Service worker: offline support (app shell, books and reading fonts).
+// Service worker: offline support (app shell, books, interface and reading fonts).
 // Bump VERSION on every deploy so old caches are cleared.
 // HTML/JS/CSS and the book list are network-first (updates reach the reader
 // on the next launch when online); book texts and icons are stale-while-revalidate.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = 'oxturn-' + VERSION;
 const SHELL = [
   './',
@@ -11,6 +11,8 @@ const SHELL = [
   'js/main.js',
   'js/books.js',
   'js/layout.js',
+  'js/hyphenate.js',
+  'js/hyph/en-us.js',
   'js/library.js',
   'js/metrics.js',
   'js/punct.js',
@@ -27,7 +29,8 @@ const SHELL = [
   'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png',
   'books/index.json',
-  // Reading fonts (stale-while-revalidate like the books; they never change)
+  // Interface + reading fonts (stale-while-revalidate like the books; they never change)
+  'fonts/figtree/figtree-latin-var.woff2',
   'fonts/literata/literata-latin-var.woff2',
   'fonts/source-serif-4/source-serif-4-latin-var.woff2',
   'fonts/eb-garamond/eb-garamond-latin-var.woff2',
