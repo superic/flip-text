@@ -1,11 +1,11 @@
 // The reader: full-screen pages, paper page-turn animation, tap/swipe input,
 // overlay chrome, contents and settings sheets.
 //
-// Three pre-rendered "leaves" are kept at all times: prev (rotated -180deg,
-// off to the left and hidden), cur (on top) and next (underneath). A forward
-// turn rotates cur around its left edge from 0 to -180deg, revealing next; a
-// backward turn swings prev back in from -180deg to 0. When a turn settles the
-// leaves just swap roles and only one leaf has to be re-rendered.
+// Three pre-rendered "leaves" are kept at all times: prev (folded away to the
+// left and hidden), cur (on top) and next (underneath). A forward turn curls
+// cur over toward the spine, revealing next; a backward turn unfolds prev back
+// over cur. The curl geometry and shading live in curl.js. When a turn
+// settles the leaves just swap roles and only one leaf has to be re-rendered.
 import { layoutChapter, pageHTML, pageIndexFor, headingHTML } from './layout.js';
 import { flipPunctuation } from './punct.js';
 import { loadBook, getPosition, savePosition } from './books.js';
@@ -14,6 +14,7 @@ import {
   STYLES, SIZES, SPACINGS, FONTS, THEMES,
 } from './settings.js';
 import * as metrics from './metrics.js';
+import * as curl from './curl.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -33,7 +34,7 @@ let active = false;
 let exitHandler = () => {};
 let pendingFont = null; // last font tapped in settings, while it loads
 
-const TURN_MS = 450; // duration of a full visible sweep (0 to 90 degrees)
+const TURN_MS = 520; // a full scripted turn (tap or key), corner to spine
 const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ------------------------------------------------------------ setup */
@@ -48,16 +49,8 @@ function init() {
   const mk = () => {
     const leaf = document.createElement('div');
     leaf.className = 'leaf';
-    leaf.innerHTML =
-      '<div class="face front"><div class="page text"></div>' +
-      '<div class="fx fx-dim"></div><div class="fx fx-cast"></div><div class="fx fx-shade"></div></div>' +
-      '<div class="face back"></div>';
-    leaf.pageEl = leaf.querySelector('.page');
-    leaf.front = leaf.querySelector('.front');
-    leaf.back = leaf.querySelector('.back');
-    leaf.dim = leaf.querySelector('.fx-dim');
-    leaf.cast = leaf.querySelector('.fx-cast');
-    leaf.shade = leaf.querySelector('.fx-shade');
+    leaf.innerHTML = curl.LEAF_HTML;
+    curl.attachLeaf(leaf);
     els.stage.appendChild(leaf);
     return leaf;
   };
@@ -187,6 +180,7 @@ function measureGeom() {
     height: Math.floor(r.height),
     lh: lineHeightPx(),
     stageW: els.stage.clientWidth,
+    stageH: els.stage.clientHeight,
     key: `${Math.floor(r.width)}x${Math.floor(r.height)}:${getSettings().font}:${getSettings().fontSize}:${lineHeightPx()}`,
   };
 }
@@ -195,7 +189,6 @@ function ensureGeom() {
   const g = measureGeom();
   if (!geom || g.key !== geom.key) { layouts = new Map(); }
   geom = g;
-  els.stage.style.perspective = Math.round(Math.max(1200, g.stageW * 2.6)) + 'px';
 }
 
 function getLayout(ci) {
@@ -239,26 +232,23 @@ function fill(leaf, ref) {
   leaf.pageEl.innerHTML = pageHTML(book, getLayout(ref.ci), pageOf(ref), style, punct);
 }
 
-function resetLeaf(leaf, angle) {
+function resetLeaf(leaf) {
   leaf.classList.remove('turning');
-  leaf.style.transform = angle ? 'rotateY(-180deg)' : '';
   leaf.style.opacity = '';
-  leaf.front.style.opacity = '';
-  leaf.back.style.opacity = '';
-  for (const fx of [leaf.dim, leaf.cast, leaf.shade]) { fx.style.opacity = ''; fx.style.transform = ''; }
+  curl.clear(leaf);
 }
 
 /** Render cur/next/prev from the text anchor. Used on open, jumps and relayouts. */
 function renderAll() {
   if (anim) anim.finish();
-  resetLeaf(leaves.cur, 0);
+  resetLeaf(leaves.cur);
   ensureGeom();
   const ref = refForAnchor(anchor);
   fill(leaves.cur, ref);
   fill(leaves.next, nextRef(ref));
   fill(leaves.prev, prevRef(ref));
-  resetLeaf(leaves.next, 0);
-  resetLeaf(leaves.prev, 180);
+  resetLeaf(leaves.next);
+  resetLeaf(leaves.prev);
   setRoles();
   updateUI();
 }
@@ -332,8 +322,10 @@ function updateUI() {
 
 /* ------------------------------------------------------------ page turn */
 
-const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+// A turn is a curl (curl.js): a grab height plus `u`, how far the held point
+// on the right edge has travelled toward the spine (0 = flat, 2w = folded
+// over to the left) and `vy`, its vertical offset. Forward turns fold cur
+// (u: 0 -> 2w); backward turns unfold prev (u: 2w -> 0).
 
 function runAnim(from, to, dur, ease, frame, done) {
   const a = { done: false, raf: 0 };
@@ -358,71 +350,29 @@ function runAnim(from, to, dur, ease, frame, done) {
 }
 
 /**
- * Timing for a turn from angle `from` to `to`. Past 90 degrees the page is
- * edge-on and off to the left, i.e. invisible on a one-page screen, so that
- * stretch is passed through quickly and the eased time is spent on the
- * visible 0-90 degree part.
+ * Ease from 0 to 1 that starts with slope m0 (so a released page keeps the
+ * finger's speed) and comes to rest smoothly. m0 = 3 is an ease-out cubic,
+ * m0 = 0 a smoothstep.
  */
-function turnPlan(from, to, E) {
-  const total = Math.abs(to - from);
-  if (total < 0.5) return { dur: 1, ease: (t) => t };
-  const hiddenA = Math.max(0, Math.max(from, to) - Math.max(90, Math.min(from, to)));
-  const visA = total - hiddenA;
-  const visDur = Math.max(140, (TURN_MS * visA) / 90);
-  if (!hiddenA) return { dur: visDur, ease: E };
-  const hidDur = 70;
-  const dur = visDur + hidDur;
-  const s = hidDur / dur;
-  const a = hiddenA / total;
-  if (to > from) { // turning away: visible part first, then the hidden part
-    return { dur, ease: (t) => (t < 1 - s ? (1 - a) * E(t / (1 - s)) : 1 - a + a * ((t - (1 - s)) / s)) };
-  }
-  // coming back: hidden part first, then the visible part
-  return { dur, ease: (t) => (t < s ? a * (t / s) : a + (1 - a) * E((t - s) / (1 - s))) };
+const hermite = (m0) => (t) => m0 * (t * t * t - 2 * t * t + t) + (3 * t * t - 2 * t * t * t);
+
+/** Animate a curl from state `from` to `to` ({u, vy}); v0 = speed of u in px/ms. */
+function animateCurl(turn, under, grab, from, to, dur, v0, done) {
+  const du = to.u - from.u;
+  const m0 = Math.abs(du) > 1 ? clamp((v0 * dur) / du, 0.8, 3) : 1;
+  runAnim(0, 1, dur, hermite(m0), (t) => {
+    curl.pose(turn, under, grab, from.u + du * t, from.vy + (to.vy - from.vy) * t);
+  }, done);
 }
 
-/** Screen x of the turning page's free edge, after perspective projection. */
-function projectedEdge(theta) {
-  const w = geom.stageW;
-  const P = parseFloat(els.stage.style.perspective) || 1600;
-  const rad = (theta * Math.PI) / 180;
-  const x = w * Math.cos(rad);
-  const z = w * Math.sin(rad);
-  const ox = w / 2;
-  const px = ox + (x - ox) * (P / Math.max(1, P - z));
-  return clamp(px, 0, w);
-}
-
-/**
- * Pose a turn. theta = how far the page has turned (0 = flat on the right,
- * 180 = fully over to the left). Only transform/opacity are touched.
- */
-function setTurn(turnLeaf, underLeaf, theta) {
-  turnLeaf.style.transform = `rotateY(${-theta}deg)`;
-  const front = theta < 90;
-  turnLeaf.front.style.opacity = front ? '1' : '0';
-  turnLeaf.back.style.opacity = front ? '0' : '1';
-  const p = Math.min(1, theta / 90);
-  // Shading band sweeps across the lifting page and deepens as it tilts.
-  turnLeaf.shade.style.opacity = String(Math.min(1, p * 1.4));
-  turnLeaf.shade.style.transform = `translateX(${-p * 60}%)`;
-  // Shadow cast onto the page below, just beyond the turning edge.
-  const edge = projectedEdge(theta);
-  underLeaf.cast.style.transform = `translateX(${edge}px)`;
-  underLeaf.cast.style.opacity = String(theta <= 90 ? Math.min(1, theta / 10) : Math.max(0, 1 - (theta - 90) / 35));
-  underLeaf.dim.style.opacity = String(0.16 * Math.max(0, 1 - theta / 110));
-}
-
-function clearUnderFx(leaf) {
-  for (const fx of [leaf.dim, leaf.cast]) { fx.style.opacity = ''; fx.style.transform = ''; }
-}
+const tapGrab = () => curl.makeGrab(geom.stageW, geom.stageH, null);
 
 function settle(dir) {
   const { prev, cur, next } = leaves;
   leaves = dir === 'fwd' ? { prev: cur, cur: next, next: prev } : { prev: next, cur: prev, next: cur };
-  resetLeaf(leaves.prev, 180);
-  resetLeaf(leaves.cur, 0);
-  resetLeaf(leaves.next, 0);
+  resetLeaf(leaves.prev);
+  resetLeaf(leaves.cur);
+  resetLeaf(leaves.next);
   setRoles();
   if (dir === 'fwd') fill(leaves.next, nextRef(leaves.cur.ref));
   else fill(leaves.prev, prevRef(leaves.cur.ref));
@@ -432,46 +382,58 @@ function settle(dir) {
 function canForward() { return !!(leaves.next.ref); }
 function canBackward() { return !!(leaves.prev.ref); }
 
-/** Forward turn. `from` lets a drag hand over mid-turn. */
-function turnForward(from = 0, ease = easeInOut) {
+/** Forward turn. `st` ({grab, u, vy}) lets a drag hand over mid-turn. */
+function turnForward(st = null, v0 = 0) {
   if (anim) anim.finish();
   if (!canForward()) { nudge(); return; }
   metrics.finishPageForward();
   const turn = leaves.cur;
   const under = leaves.next;
   if (reducedMotion()) {
+    resetLeaf(turn);
     runAnim(1, 0, 200, (t) => t, (o) => { turn.style.opacity = String(o); }, () => settle('fwd'));
     return;
   }
+  const w = geom.stageW;
+  const s = st || { grab: tapGrab(), u: 0, vy: 0 };
+  if (!st) curl.begin(turn);
   turn.classList.add('turning');
-  const plan = turnPlan(from, 180, ease);
-  runAnim(from, 180, plan.dur, plan.ease, (th) => setTurn(turn, under, th), () => settle('fwd'));
+  const dur = 170 + (TURN_MS - 170) * ((2 * w - s.u) / (2 * w));
+  animateCurl(turn, under, s.grab, s, { u: 2 * w, vy: 0 }, dur, v0, () => settle('fwd'));
 }
 
-function turnBackward(from = 180, ease = easeInOut) {
+function turnBackward(st = null, v0 = 0) {
   if (anim) anim.finish();
   if (!canBackward()) { nudge(); return; }
   metrics.discardPage();
   const turn = leaves.prev;
   const under = leaves.cur;
-  turn.classList.add('turning');
   if (reducedMotion()) {
-    turn.style.transform = '';
+    resetLeaf(turn);
+    turn.classList.add('turning');
     runAnim(0, 1, 200, (t) => t, (o) => { turn.style.opacity = String(o); }, () => settle('back'));
     return;
   }
-  const plan = turnPlan(from, 0, ease);
-  runAnim(from, 0, plan.dur, plan.ease, (th) => setTurn(turn, under, th), () => settle('back'));
+  const w = geom.stageW;
+  const s = st || { grab: tapGrab(), u: 2 * w, vy: 0 };
+  if (!st) { curl.begin(turn); curl.pose(turn, under, s.grab, s.u, s.vy); }
+  turn.classList.add('turning');
+  const dur = 170 + (TURN_MS - 170) * (s.u / (2 * w));
+  animateCurl(turn, under, s.grab, s, { u: 0, vy: 0 }, dur, -v0, () => settle('back'));
 }
 
-/** Small lift-and-drop when there is no page to turn to. */
+/** Small lift-and-drop of the corner when there is no page to turn to. */
 function nudge() {
   if (reducedMotion()) return;
   const leaf = leaves.cur;
+  const under = leaves.next;
   if (!leaf.ref) return;
-  runAnim(0, 1, 260, (t) => t, (t) => {
-    leaf.style.transform = `rotateY(${-Math.sin(t * Math.PI) * 5}deg)`;
-  }, () => resetLeaf(leaf, 0));
+  const grab = tapGrab();
+  const lift = geom.stageW * 0.09;
+  curl.begin(leaf);
+  runAnim(0, 1, 320, (t) => t, (t) => {
+    curl.pose(leaf, under, grab, Math.sin(t * Math.PI) * lift, 0);
+  }, () => { resetLeaf(leaf); curl.clearUnder(under); });
 }
 
 /* ------------------------------------------------------------ input */
@@ -479,7 +441,11 @@ function nudge() {
 function onDown(e) {
   if (!e.isPrimary || sheetOpen) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  gesture = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), mode: null, theta: 0, samples: [[e.clientX, performance.now()]] };
+  const r = els.stage.getBoundingClientRect();
+  gesture = {
+    id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), mode: null,
+    top: r.top, left: r.left, st: null, raf: 0, samples: [[e.clientX, performance.now()]],
+  };
   try { els.stage.setPointerCapture(e.pointerId); } catch { /* ignore */ }
 }
 
@@ -491,27 +457,37 @@ function onMove(e) {
   g.samples.push([e.clientX, performance.now()]);
   if (g.samples.length > 6) g.samples.shift();
   if (!g.mode) {
-    if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
+    // Mostly sideways (diagonal pulls from a corner count) starts a turn.
+    if (Math.abs(dx) < 10 || Math.abs(dx) < 0.6 * Math.abs(dy)) return;
     if (anim) anim.finish();
     if (uiOpen) showUI(false);
     if (dx < 0 && canForward()) g.mode = 'fwd';
     else if (dx > 0 && canBackward()) g.mode = 'back';
     else g.mode = 'none';
     if (reducedMotion() && g.mode !== 'none') g.mode = 'rm-' + g.mode;
-    if (g.mode === 'fwd') leaves.cur.classList.add('turning');
-    if (g.mode === 'back') { leaves.prev.classList.add('turning'); }
+    if (g.mode === 'fwd' || g.mode === 'back') {
+      // The grab height picks which corner peels (see curl.js).
+      const grab = curl.makeGrab(geom.stageW, geom.stageH, g.y0 - g.top);
+      const turn = g.mode === 'fwd' ? leaves.cur : leaves.prev;
+      curl.begin(turn);
+      g.st = { grab, u: 0, vy: 0 };
+      g.turn = turn;
+      g.under = g.mode === 'fwd' ? leaves.next : leaves.cur;
+    }
   }
-  // Rotation follows the finger: the page's free edge tracks the drag
-  // distance (edge at screen-width minus the distance dragged).
+  if (!g.st) return;
   const w = geom.stageW;
-  const follow = (d) => (Math.acos(clamp(1 - d / w, -1, 1)) * 180) / Math.PI;
-  if (g.mode === 'fwd') {
-    g.theta = clamp(follow(-dx), 0, 180);
-    setTurn(leaves.cur, leaves.next, g.theta);
-  } else if (g.mode === 'back') {
-    // The previous page swings in from the left: its edge sits at the finger.
-    g.theta = (Math.acos(clamp(dx / w, 0, 1)) * 180) / Math.PI;
-    setTurn(leaves.prev, leaves.cur, g.theta);
+  // Forward: the held corner follows the finger. Backward: the fold (the
+  // edge of the returning page) stays under the finger.
+  g.st.u = g.mode === 'fwd' ? clamp(-dx, 0, 2 * w) : clamp(2 * w - 2 * dx, 0, 2 * w);
+  g.st.vy = dy;
+  if (!g.raf) {
+    g.raf = requestAnimationFrame(() => {
+      g.raf = 0;
+      if (gesture !== g) return;
+      curl.pose(g.turn, g.under, g.st.grab, g.st.u, g.st.vy);
+      g.turn.classList.add('turning');
+    });
   }
 }
 
@@ -527,60 +503,70 @@ function onUp(e) {
   const g = gesture;
   if (!g || e.pointerId !== g.id) return;
   gesture = null;
+  if (g.raf) cancelAnimationFrame(g.raf);
   const dx = e.clientX - g.x0;
   const dy = e.clientY - g.y0;
   const v = velocity(g);
+  const w = geom ? geom.stageW : 1;
   if (g.mode === 'fwd') {
-    const go = g.theta > 62 || (v < -0.3 && g.theta > 8);
-    if (go) turnForward(g.theta, easeOut);
-    else snapBack('fwd', g.theta);
+    // Same thresholds as the old rotating turn: past ~53% of the width
+    // (62 degrees), or a leftward flick.
+    const go = g.st.u > 0.53 * w || (v < -0.3 && g.st.u > 0.01 * w);
+    if (go) turnForward(g.st, -v);
+    else snapBack(g, -v);
     return;
   }
   if (g.mode === 'back') {
-    const go = g.theta < 62 || (v > 0.3 && g.theta < 86);
-    if (go) turnBackward(g.theta, easeOut);
-    else snapBack('back', g.theta);
+    const edge = (2 * w - g.st.u) / 2; // where the returning page's edge is
+    const go = edge > 0.47 * w || (v > 0.3 && edge > 0.07 * w);
+    if (go) turnBackward(g.st, 2 * v);
+    else snapBack(g, -2 * v);
     return;
   }
   if (g.mode === 'rm-fwd') { if (dx < -40) turnForward(); return; }
   if (g.mode === 'rm-back') { if (dx > 40) turnBackward(); return; }
   if (g.mode === 'none') return;
   // A tap.
-  if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && performance.now() - g.t0 < 700) onTap(e.clientX, e.clientY);
+  if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && performance.now() - g.t0 < 700) onTap(e.clientX - g.left, e.clientY - g.top, e.clientX, e.clientY);
 }
 
 function onCancel(e) {
   const g = gesture;
   if (!g || e.pointerId !== g.id) return;
   gesture = null;
-  if (g.mode === 'fwd' || g.mode === 'back') snapBack(g.mode, g.theta);
+  if (g.raf) cancelAnimationFrame(g.raf);
+  if (g.mode === 'fwd' || g.mode === 'back') snapBack(g, 0);
 }
 
-function snapBack(mode, theta) {
-  if (mode === 'fwd') {
-    const turn = leaves.cur;
-    const under = leaves.next;
-    const plan = turnPlan(theta, 0, easeOut);
-    runAnim(theta, 0, plan.dur, plan.ease, (th) => setTurn(turn, under, th), () => {
-      resetLeaf(turn, 0); clearUnderFx(under);
-    });
-  } else {
-    const turn = leaves.prev;
-    const under = leaves.cur;
-    const plan = turnPlan(theta, 180, easeOut);
-    runAnim(theta, 180, plan.dur, plan.ease, (th) => setTurn(turn, under, th), () => {
-      resetLeaf(turn, 180); clearUnderFx(under);
-    });
-  }
+/** Let go without turning: the page settles back where it was. Records nothing. */
+function snapBack(g, v0) {
+  const w = geom.stageW;
+  const { turn, under, st } = g;
+  const to = { u: g.mode === 'fwd' ? 0 : 2 * w, vy: 0 };
+  const dur = 160 + 280 * (Math.abs(to.u - st.u) / (2 * w));
+  turn.classList.add('turning');
+  animateCurl(turn, under, st.grab, st, to, dur, v0, () => {
+    resetLeaf(turn); curl.clearUnder(under);
+  });
 }
 
-function onTap(x, y) {
-  const hit = document.elementFromPoint(x, y);
+/**
+ * Taps. A band across the top of the page (where the top bar appears) and
+ * the middle 40% below it open the menus; the outer sides turn pages. While
+ * the menus are open any tap on the page just closes them.
+ */
+function onTap(x, y, cx, cy) {
+  const hit = document.elementFromPoint(cx, cy);
   if (hit && hit.closest('[data-end="library"]')) { exitHandler(); return; }
   if (uiOpen) { showUI(false); return; }
   const w = els.stage.clientWidth;
-  if (x > (w * 2) / 3) turnForward();
-  else if (x < w / 3) turnBackward();
+  const h = els.stage.clientHeight;
+  // Safe-area top = where the reading column starts, minus its 30px margin.
+  const safeTop = Math.max(0, leaves.cur.pageEl.getBoundingClientRect().top - els.stage.getBoundingClientRect().top - 30);
+  const topBand = safeTop + Math.max(88, h * 0.12);
+  if (y < topBand) showUI(true);
+  else if (x > w * 0.7) turnForward();
+  else if (x < w * 0.3) turnBackward();
   else showUI(true);
 }
 
