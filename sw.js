@@ -2,7 +2,7 @@
 // Bump VERSION on every deploy so old caches are cleared.
 // HTML/JS/CSS and the book list are network-first (updates reach the reader
 // on the next launch when online); book texts and icons are stale-while-revalidate.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'oxturn-' + VERSION;
 const SHELL = [
   './',
@@ -13,6 +13,7 @@ const SHELL = [
   'js/layout.js',
   'js/library.js',
   'js/metrics.js',
+  'js/punct.js',
   'js/reader.js',
   'js/settings.js',
   'js/stats.js',

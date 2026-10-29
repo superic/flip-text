@@ -7,9 +7,10 @@
 //  - Time while the app is hidden (or while menus are open) does not count.
 //  - Discard < 3 s (flipping past) and > 5 min (put it down) of active time.
 //  - Never record the same page twice (rereading after going back).
-//  - Never record if flip style, text size or font changed while on the page.
+//  - Never record if flip style, punctuation flipping, text size or font
+//    changed while on the page.
 import { load, save, remove, KEYS } from './storage.js';
-import { getSettings, STYLES } from './settings.js';
+import { getSettings, punctOf, STYLES } from './settings.js';
 
 const MIN_MS = 3000;
 const MAX_MS = 5 * 60 * 1000;
@@ -22,7 +23,7 @@ export function startPage({ key, bookId, chapterIdx, words }) {
   const s = getSettings();
   page = {
     key, bookId, chapterIdx, words,
-    style: s.style, fontSize: s.fontSize, spacing: s.spacing, font: s.font,
+    style: s.style, punct: punctOf(s), fontSize: s.fontSize, spacing: s.spacing, font: s.font,
     activeMs: 0,
     since: pauses.size ? null : Date.now(),
     invalid: false,
@@ -49,13 +50,13 @@ export function finishPageForward() {
   if (!p) return null;
   if (p.since != null) p.activeMs += Date.now() - p.since;
   const s = getSettings();
-  if (p.invalid || s.style !== p.style || s.fontSize !== p.fontSize || s.font !== p.font) return null;
+  if (p.invalid || s.style !== p.style || punctOf(s) !== p.punct || s.fontSize !== p.fontSize || s.font !== p.font) return null;
   if (p.words <= 0 || p.activeMs < MIN_MS || p.activeMs > MAX_MS) return null;
   const recorded = load(KEYS.recorded, []);
   if (recorded.includes(p.key)) return null;
   recorded.push(p.key);
   save(KEYS.recorded, recorded);
-  const rec = { ts: Date.now(), bookId: p.bookId, chapterIdx: p.chapterIdx, words: p.words, ms: Math.round(p.activeMs), style: p.style, font: p.font };
+  const rec = { ts: Date.now(), bookId: p.bookId, chapterIdx: p.chapterIdx, words: p.words, ms: Math.round(p.activeMs), style: p.style, punct: p.punct, font: p.font };
   const records = getRecords();
   records.push(rec);
   save(KEYS.records, records);

@@ -1,4 +1,5 @@
-// Reader settings (flip style, text size, line spacing, font, theme) + theme application.
+// Reader settings (flip style, punctuation flipping, text size, line spacing,
+// font, theme) + theme application.
 import { load, save, KEYS } from './storage.js';
 
 export const STYLES = [
@@ -31,11 +32,13 @@ export const FONTS = [
   { id: 'atkinson', label: 'Atkinson Hyperlegible', family: 'Atkinson Hyperlegible', stack: '"Atkinson Hyperlegible", var(--sans)' },
 ];
 
-const DEFAULTS = { style: 'mirrored', fontSize: 20, spacing: 1.5, font: 'book', theme: 'paper' };
+// punct: move punctuation across on Reversed words lines (see punct.js).
+const DEFAULTS = { style: 'mirrored', punct: true, fontSize: 20, spacing: 1.5, font: 'book', theme: 'paper' };
 
 function sanitize(s) {
   const out = { ...DEFAULTS, ...(s && typeof s === 'object' ? s : {}) };
   if (!STYLES.some((x) => x.id === out.style)) out.style = DEFAULTS.style;
+  if (typeof out.punct !== 'boolean') out.punct = DEFAULTS.punct;
   if (!SIZES.includes(out.fontSize)) out.fontSize = DEFAULTS.fontSize;
   if (!SPACINGS.some((x) => x.value === out.spacing)) out.spacing = DEFAULTS.spacing;
   if (!FONTS.some((x) => x.id === out.font)) out.font = DEFAULTS.font;
@@ -49,6 +52,8 @@ const listeners = new Set();
 export const getSettings = () => current;
 export const styleLabel = (id) => (STYLES.find((s) => s.id === id) || { label: id }).label;
 export const fontOf = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
+/** Punctuation flipping in effect: true/false for Reversed words, null for other styles. */
+export const punctOf = (s = current) => (s.style === 'words' ? s.punct : null);
 /** Line height in whole pixels so lines sit on an exact grid. */
 export const lineHeightPx = (s = current) => Math.round(s.fontSize * s.spacing);
 

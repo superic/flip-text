@@ -7,9 +7,10 @@
 // backward turn swings prev back in from -180deg to 0. When a turn settles the
 // leaves just swap roles and only one leaf has to be re-rendered.
 import { layoutChapter, pageHTML, pageIndexFor, headingHTML } from './layout.js';
+import { flipPunctuation } from './punct.js';
 import { loadBook, getPosition, savePosition } from './books.js';
 import {
-  getSettings, updateSettings, onSettingsChange, lineHeightPx, fontReady,
+  getSettings, updateSettings, onSettingsChange, lineHeightPx, fontReady, punctOf,
   STYLES, SIZES, SPACINGS, FONTS, THEMES,
 } from './settings.js';
 import * as metrics from './metrics.js';
@@ -119,7 +120,9 @@ function init() {
     } else if (s.fontSize !== prev.fontSize || s.spacing !== prev.spacing) {
       metrics.invalidatePage();
       relayout();
-    } else if (s.style !== prev.style) {
+    } else if (s.style !== prev.style || punctOf(s) !== punctOf(prev)) {
+      // Punctuation flipping only reorders characters within words, so the
+      // pages keep their line breaks: re-render them, no re-layout.
       metrics.invalidatePage();
       for (const l of Object.values(leaves)) fill(l, l.ref);
     }
@@ -224,7 +227,7 @@ const pageOf = (ref) => getLayout(ref.ci).pages[ref.pi];
 
 function fill(leaf, ref) {
   leaf.ref = ref;
-  const style = getSettings().style;
+  const { style, punct } = getSettings();
   leaf.pageEl.className = 'page text style-' + style;
   if (!ref) { leaf.pageEl.innerHTML = ''; return; }
   if (ref.end) {
@@ -233,7 +236,7 @@ function fill(leaf, ref) {
       '<button type="button" class="btn btn-primary" data-end="library">Back to Library</button></div>';
     return;
   }
-  leaf.pageEl.innerHTML = pageHTML(book, getLayout(ref.ci), pageOf(ref), style);
+  leaf.pageEl.innerHTML = pageHTML(book, getLayout(ref.ci), pageOf(ref), style, punct);
 }
 
 function resetLeaf(leaf, angle) {
@@ -626,11 +629,12 @@ function renderToc() {
   els.toc.innerHTML = html;
 }
 
-function stylePreview(id) {
+function stylePreview(id, punct) {
   const a = ['The ox plows one', 'furrow, then turns'];
   const b = ['and plows the next', 'one back again.'];
-  const l2 = id === 'words' ? a[1].split(' ').reverse().join(' ') : a[1];
-  const l4 = id === 'words' ? b[1].split(' ').reverse().join(' ') : b[1];
+  const flip = (l) => l.split(' ').reverse().map((w) => (punct ? flipPunctuation(w) : w)).join(' ');
+  const l2 = id === 'words' ? flip(a[1]) : a[1];
+  const l4 = id === 'words' ? flip(b[1]) : b[1];
   const rev = id === 'normal' ? '' : ' rev';
   return `<div class="preview text style-${id}">` +
     `<div class="ln">${a[0]}</div><div class="ln${rev}">${l2}</div>` +
@@ -643,8 +647,8 @@ function renderSettings() {
   els.settingsBody.innerHTML =
     '<div class="set-group"><div class="set-label">Flip style</div><div class="style-opts">' +
     STYLES.map((st) => `<button type="button" class="style-opt" data-style="${st.id}" aria-pressed="${st.id === s.style}">` +
-      `<div class="name">${st.label}</div>${stylePreview(st.id)}</button>`).join('') +
-    '</div></div>' +
+      `<div class="name">${st.label}</div>${stylePreview(st.id, s.punct)}</button>`).join('') +
+    '</div>' + punctToggle(s) + '</div>' +
     '<div class="set-group"><div class="set-label">Text size</div><div class="size-row">' +
     `<button type="button" class="small" data-size="-1" aria-label="Smaller text" ${sizeIdx <= 0 ? 'disabled' : ''}>A−</button>` +
     `<div class="val">${s.fontSize} pt</div>` +
@@ -662,11 +666,21 @@ function renderSettings() {
     '</div></div>';
 }
 
+/** On/off switch for punctuation flipping; only live under Reversed words. */
+function punctToggle(s) {
+  const live = s.style === 'words';
+  return `<button type="button" class="toggle-row" role="switch" data-punct="1" aria-checked="${s.punct}" ${live ? '' : 'disabled'}>` +
+    '<span class="toggle-text"><span class="toggle-name">Flip punctuation</span>' +
+    `<span class="toggle-note">${live ? 'Move punctuation to read right to left' : 'Only for Reversed words'}</span></span>` +
+    '<span class="switch" aria-hidden="true"></span></button>';
+}
+
 function onSettingsClick(e) {
   const b = e.target.closest('button');
   if (!b || b.disabled) return;
   const s = getSettings();
   if (b.dataset.style) updateSettings({ style: b.dataset.style });
+  else if (b.dataset.punct) updateSettings({ punct: !s.punct });
   else if (b.dataset.size) {
     const i = clamp(SIZES.indexOf(s.fontSize) + Number(b.dataset.size), 0, SIZES.length - 1);
     updateSettings({ fontSize: SIZES[i] });

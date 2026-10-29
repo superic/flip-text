@@ -6,6 +6,8 @@
 // words are grouped into lines by their offsetTop. Those lines are then rebuilt
 // as explicit, individually styleable line elements and packed into pages.
 
+import { flipPunctuation } from './punct.js';
+
 export const SCENE_BREAK = '§';
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -118,8 +120,11 @@ export function layoutChapter(book, ci, geom, measureEl) {
  * HTML for one page. Slot k (0-based, counting scene breaks, not the heading)
  * is reversed when k is odd, so every page starts left-to-right and the
  * alternation runs continuously down the page across paragraph boundaries.
+ * `punct` (Reversed words only) moves each reversed word's punctuation to the
+ * side read first. It only reorders characters within a word, so the line
+ * breaks measured above are unaffected and toggling it needs no re-layout.
  */
-export function pageHTML(book, layout, page, style) {
+export function pageHTML(book, layout, page, style, punct = false) {
   const ch = book.chapters[page.ci];
   let html = '';
   if (page.heading) {
@@ -129,7 +134,10 @@ export function pageHTML(book, layout, page, style) {
     const rev = k % 2 === 1 && style !== 'normal';
     if (s.type === 'break') { html += '<div class="ln brk" aria-label="scene break">⁂</div>'; return; }
     let words = ch.words[s.pi].slice(s.start, s.end);
-    if (rev && style === 'words') words = words.reverse();
+    if (rev && style === 'words') {
+      words = words.reverse();
+      if (punct) words = words.map(flipPunctuation);
+    }
     let cls = 'ln';
     if (s.first) cls += ' first';
     if (s.last) cls += ' last';

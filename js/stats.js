@@ -122,7 +122,8 @@ export function resultsText() {
   lines.push('Average speed by flip style:');
   STYLES.forEach((s) => {
     const a = sum.byStyle[s.id];
-    lines.push(a.pages ? `- ${s.label}: ${Math.round(a.wpm)} wpm (${a.pages} pages, ${fmtDuration(a.ms)})` : `- ${s.label}: not tried yet`);
+    const label = s.id === 'words' ? s.label + punctNote() : s.label;
+    lines.push(a.pages ? `- ${label}: ${Math.round(a.wpm)} wpm (${a.pages} pages, ${fmtDuration(a.ms)})` : `- ${s.label}: not tried yet`);
   });
   lines.push('');
   lines.push(`Total: ${sum.totals.pages} pages, ${fmtInt(sum.totals.words)} words, ${fmtDuration(sum.totals.ms)} reading`);
@@ -144,6 +145,19 @@ export function resultsText() {
     });
   }
   return lines.join('\n');
+}
+
+/**
+ * Whether Reversed words pages were read with punctuation flipped. Records
+ * from before the setting existed have no `punct`: they were not flipped.
+ */
+function punctNote() {
+  const recs = getRecords().filter((r) => r.style === 'words');
+  const on = recs.filter((r) => r.punct === true).length;
+  if (!recs.length) return '';
+  if (on === recs.length) return ' (punctuation flipped)';
+  if (!on) return ' (punctuation not flipped)';
+  return ` (punctuation flipped on ${on} of ${recs.length} pages)`;
 }
 
 async function sendResults() {

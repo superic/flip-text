@@ -17,6 +17,8 @@ Choose one under **Aa → Flip style**. A style affects only the reversed lines 
 | Upside down | The line is rotated 180° |
 | Normal | Nothing is flipped (the control condition) |
 
+With **Reversed words**, the **Flip punctuation** switch (on by default) also moves each reversed word's punctuation to the side the eye reaches first, and mirrors quotes and brackets so they still open toward the text: `position.` becomes `.position`, `“Fifteen` becomes `Fifteen”`. Words joined by an em dash are reversed too (`observer—excellent` becomes `excellent—observer`); hyphenated words, apostrophes inside a word (`don’t`) and a possessive `’` after an s (`soldiers’`) are left alone. The rules are in `js/punct.js`. Only characters within a word move, so line breaks and pages are the same with the switch on or off.
+
 Every page starts with a left-to-right line. The alternation runs down the page without resetting at paragraph breaks or scene breaks (⁂).
 
 ## Fonts
@@ -59,9 +61,9 @@ The code is in `js/metrics.js`. None of this is shown while you are reading.
 - A page is not recorded if any of these apply:
   - it was on screen for less than 3 seconds of active time (flipping past) or more than 5 minutes (the reader put it down)
   - it was already recorded once (rereading after going back)
-  - the flip style, text size, font or layout changed while it was on screen
-- Each record has the form `{ts, bookId, chapterIdx, words, ms, style, font}` and is kept in `localStorage`. A new session starts after a gap of 30 minutes or more.
-- The **Reading stats** screen shows the average WPM for each flip style (total words ÷ total time), a trend chart of each session's average, and overall totals. **Send my results** opens the share sheet with a plain-text summary (including which fonts the pages were read in). If sharing isn't available, the summary is copied to the clipboard instead.
+  - the flip style, punctuation flipping, text size, font or layout changed while it was on screen
+- Each record has the form `{ts, bookId, chapterIdx, words, ms, style, punct, font}` and is kept in `localStorage`. `punct` is whether punctuation was flipped (`null` for styles other than Reversed words). A new session starts after a gap of 30 minutes or more.
+- The **Reading stats** screen shows the average WPM for each flip style (total words ÷ total time), a trend chart of each session's average, and overall totals. **Send my results** opens the share sheet with a plain-text summary (including which fonts the pages were read in, and whether Reversed words pages had punctuation flipped). If sharing isn't available, the summary is copied to the clipboard instead.
 
 ## Install / offline
 
