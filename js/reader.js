@@ -32,6 +32,8 @@ let uiOpen = false;
 let sheetOpen = null;
 let active = false;
 let exitHandler = () => {};
+let removeHandler = null; // added stories: "Remove from shelf" in Contents
+let confirmRemove = false;
 let pendingFont = null; // last font tapped in settings, while it loads
 
 const TURN_MS = 520; // a full scripted turn (tap or key), corner to spine
@@ -79,6 +81,15 @@ function init() {
     sheet.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeSheet(); });
   }
   els.toc.addEventListener('click', (e) => {
+    const r = e.target.closest('[data-remove]');
+    if (r) {
+      const step = r.dataset.remove;
+      if (step === 'yes') { const id = entry.id; closeSheet(); if (removeHandler) removeHandler(id); return; }
+      confirmRemove = step === 'ask';
+      renderRemove();
+      if (confirmRemove) $('toc-foot').scrollIntoView({ block: 'end', behavior: 'smooth' });
+      return;
+    }
     const b = e.target.closest('button[data-ci]');
     if (!b) return;
     closeSheet();
@@ -143,9 +154,10 @@ function setRoles() {
 
 /* ------------------------------------------------------------ open / close */
 
-export async function openReader(bookEntry, { onExit }) {
+export async function openReader(bookEntry, { onExit, onRemove = null }) {
   init();
   exitHandler = onExit;
+  removeHandler = onRemove;
   active = true;
   entry = bookEntry;
   showUI(false);
@@ -652,10 +664,29 @@ function renderToc() {
     const cur = curRef && curRef.ci === ci;
     // How far into the current chapter, by pages.
     const pill = cur ? `<span class="pill">${Math.round((curRef.pi / Math.max(1, getLayout(ci).pages.length)) * 100)}%</span>` : '';
+    // Added stories number their chapters 1, 2, 3 (their headings are titles).
+    const num = book.user ? ci + 1 : ch.number || ci + 1;
     html += `<li><button type="button" data-ci="${ci}" class="${cur ? 'current' : ''}"${cur ? ' aria-current="true"' : ''}>` +
-      `<span class="n">${esc(ch.number || ci + 1)}</span><span class="tt">${esc(ch.title || 'Chapter ' + (ci + 1))}</span>${pill}</button></li>`;
+      `<span class="n">${esc(num)}</span><span class="tt">${esc(ch.title || 'Chapter ' + (ci + 1))}</span>${pill}</button></li>`;
   });
+  if (book.user && removeHandler) html += '<li class="toc-foot" id="toc-foot"></li>';
   els.toc.innerHTML = html;
+  confirmRemove = false;
+  renderRemove();
+}
+
+/** Added stories only: "Remove from shelf", then an in-page confirmation. */
+function renderRemove() {
+  const foot = $('toc-foot');
+  if (!foot) return;
+  const bin = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></svg>';
+  foot.innerHTML = !confirmRemove
+    ? '<p class="toc-note">You added this story on this device.</p>' +
+      `<button type="button" class="btn btn-danger remove-btn" data-remove="ask">${bin}Remove from shelf</button>`
+    : '<div class="confirm-box" role="alertdialog" aria-label="Remove story">' +
+      `<p>Remove <strong>${esc(book.title)}</strong> from this device? Its text and your place in it will be deleted. Your reading stats are kept.</p>` +
+      '<div class="row"><button type="button" class="btn" data-remove="no">Keep it</button>' +
+      '<button type="button" class="btn btn-danger" data-remove="yes">Remove</button></div></div>';
 }
 
 function stylePreview(id, punct) {

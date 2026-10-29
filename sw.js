@@ -1,15 +1,19 @@
 // Service worker: offline support (app shell, books, interface and reading fonts).
 // Bump VERSION on every deploy so old caches are cleared.
+// Stories added on the device live in IndexedDB (js/stories.js) and never
+// pass through here: nothing is fetched for them, so nothing is cached.
 // HTML/JS/CSS and the book list are network-first (updates reach the reader
 // on the next launch when online); book texts and icons are stale-while-revalidate.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = 'oxturn-' + VERSION;
 const SHELL = [
   './',
   'index.html',
   'css/app.css',
   'js/main.js',
+  'js/addstory.js',
   'js/books.js',
+  'js/import.js',
   'js/layout.js',
   'js/hyphenate.js',
   'js/hyph/en-us.js',
@@ -21,6 +25,7 @@ const SHELL = [
   'js/settings.js',
   'js/stats.js',
   'js/storage.js',
+  'js/stories.js',
   'js/toast.js',
   'manifest.webmanifest',
   'icons/icon.svg',

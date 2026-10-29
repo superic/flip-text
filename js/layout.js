@@ -38,9 +38,14 @@ export function prepareBook(book) {
 /** What the book calls its chapters: "story" (Sherlock Holmes) or "chapter". */
 export const unitOf = (book) => (book && book.unit) || 'chapter';
 
-/** "Story I", "Chapter 1": the small label above a chapter's title. */
+/**
+ * "Story I", "Chapter 1": the small label above a chapter's title. An added
+ * story shows its own heading ("Chapter 3", "Part II") or, with no heading
+ * (one chapter, or a heading used as the title), no label at all.
+ */
 export function chapterLabel(book, ci) {
   const ch = book.chapters[ci];
+  if (book.user) return ch.number ? String(ch.number) : '';
   const n = String(ch.number || ci + 1);
   const u = unitOf(book);
   return u[0].toUpperCase() + u.slice(1) + ' ' + n;
@@ -51,7 +56,8 @@ export function headingHTML(book, ci) {
   const prev = book.chapters[ci - 1];
   let html = '';
   if (ch.part && (!prev || prev.part !== ch.part)) html += `<div class="ch-part">${esc(ch.part)}</div>`;
-  html += `<div class="ch-num">${esc(chapterLabel(book, ci))}</div>`;
+  const label = chapterLabel(book, ci);
+  if (label) html += `<div class="ch-num">${esc(label)}</div>`;
   if (ch.title) html += `<div class="ch-title">${esc(ch.title)}</div>`;
   html += '<div class="ch-orn" aria-hidden="true"><span></span><i></i><span></span></div>';
   return html;

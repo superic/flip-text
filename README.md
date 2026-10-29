@@ -82,3 +82,11 @@ Both books are public-domain texts from [Project Gutenberg](https://www.gutenber
 - *Treasure Island*, by Robert Louis Stevenson
 
 Book data is in `books/`. `books/index.json` lists the books, and `books/<id>.json` holds each book's chapters and paragraphs. A paragraph that is exactly `"§"` marks a scene break.
+
+## Adding your own story
+
+The **Add a story** tile at the end of the shelf opens a sheet: paste the text (or tap **Paste**, or **Choose a text file** for a `.txt`), check the title, and tap **Add to shelf**. The story gets its own cloth cover and works like the built-in books: Continue reading, progress, every flip style and the speed measurements.
+
+**Added stories stay on the device.** The text is kept only in that browser's storage (IndexedDB, or `localStorage` where IndexedDB is unavailable; `js/stories.js`). It is never uploaded, never put in the repository and never stored by the service worker. It is not synced to other devices either, and clearing the browser's website data deletes it. To remove a story, open it, tap **Contents** and then **Remove from shelf**; its reading-speed results are kept.
+
+Pasted text is tidied by `js/import.js` (plain functions, testable with node): hard-wrapped lines are joined into paragraphs (blank lines separate paragraphs), missing spaces after sentences are put back (`lake.When` → `lake. When`, leaving `P.M.`, `U.S.` and `3.5` alone), quotes are curled, `--` and spaced hyphens become em dashes and `...` becomes `…`. A short first line becomes the title. Two or more headings such as `Chapter 2` or `Part II` split the story into chapters, and a line of `* * *` becomes a scene break.

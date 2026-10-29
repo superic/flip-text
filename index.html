@@ -43,6 +43,55 @@
     </div>
   </main>
 
+  <!-- Add a story (opened from the Library's "Add a story" tile) -->
+  <div id="add-sheet" class="sheet-wrap add-sheet" hidden>
+    <div class="backdrop" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="add-heading">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <h2 id="add-heading">Add a story</h2>
+        <button type="button" class="close-btn" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <form id="add-form" class="sheet-body scroll add-body" novalidate autocomplete="off">
+        <p class="add-intro">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></svg>
+          <span>Kept only on this device. It is never uploaded or shared.</span>
+        </p>
+        <div class="field">
+          <label class="set-label" for="add-text">Story</label>
+          <textarea id="add-text" placeholder="Paste the story here" spellcheck="false" autocapitalize="sentences"></textarea>
+          <p class="add-summary" id="add-summary" aria-live="polite" hidden></p>
+          <div class="add-src">
+            <button type="button" class="btn" id="add-paste" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2.5" /><path d="M9.5 4.5h5v2.5h-5z" /></svg>Paste
+            </button>
+            <button type="button" class="btn" id="add-file-btn">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z" /><path d="M14 3.5V8h4.5M9 13h6M9 16.5h4" /></svg>Choose a text file
+            </button>
+            <input type="file" id="add-file" accept=".txt,text/plain" hidden>
+          </div>
+        </div>
+        <div class="field">
+          <label class="set-label" for="add-name">Title</label>
+          <input type="text" id="add-name" class="add-input" autocapitalize="words" spellcheck="false" enterkeyhint="next">
+        </div>
+        <div class="field">
+          <label class="set-label" for="add-author">Author <span class="opt">(optional)</span></label>
+          <input type="text" id="add-author" class="add-input" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+          <button type="button" class="suggest" id="add-suggest" hidden></button>
+        </div>
+        <p class="add-error" id="add-error" role="alert" hidden></p>
+        <div class="add-actions">
+          <button type="button" class="btn" data-cancel>Cancel</button>
+          <button type="submit" class="btn btn-primary" id="add-go" disabled>Add to shelf</button>
+        </div>
+        <p class="add-hint" id="add-hint" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+
   <!-- Reader -->
   <section id="reader" class="screen reader" hidden>
     <div id="stage" class="stage" aria-live="off"></div>

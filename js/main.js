@@ -1,9 +1,12 @@
 // App entry: routing between Library / Reader / Stats, install prompts, service worker.
 import { applySettings } from './settings.js';
-import { loadIndex } from './books.js';
+import { loadIndex, forgetBook } from './books.js';
 import { renderLibrary } from './library.js';
 import { openReader, closeReader, _debug } from './reader.js';
 import { renderStats } from './stats.js';
+import { listStories, removeStory } from './stories.js';
+import { openAddSheet, closeAddSheet } from './addstory.js';
+import { toast } from './toast.js';
 import { load, save, KEYS } from './storage.js';
 
 applySettings();
@@ -14,23 +17,35 @@ const screens = {
   reader: document.getElementById('reader'),
   stats: document.getElementById('stats'),
 };
-let index = null;
+let builtInFailed = false;
 
 function show(name) {
   for (const [k, el] of Object.entries(screens)) el.hidden = k !== name;
 }
 
+/**
+ * The shelf: built-in books (books/index.json, cached by loadIndex) then
+ * stories added on this device. null only when there is nothing at all.
+ */
 async function getIndex() {
-  if (index) return index;
-  try {
-    index = await loadIndex();
-  } catch {
-    index = null;
-  }
-  return index;
+  let builtIn = null;
+  try { builtIn = await loadIndex(); } catch { builtIn = null; }
+  builtInFailed = !builtIn;
+  const mine = await listStories();
+  return builtIn || mine.length ? [...(builtIn || []), ...mine] : null;
+}
+
+const openBook = (id) => { location.hash = '#/read/' + encodeURIComponent(id); };
+
+async function onRemove(id) {
+  await removeStory(id);
+  forgetBook(id);
+  location.hash = '#/';
+  toast('Removed from your shelf');
 }
 
 async function route() {
+  closeAddSheet();
   const h = location.hash || '#/';
   const m = h.match(/^#\/read\/(.+)$/);
   if (m) {
@@ -39,26 +54,30 @@ async function route() {
     const entry = idx && idx.find((b) => b.id === id);
     if (!entry) { location.replace('#/'); return; }
     show('reader');
-    openReader(entry, { onExit: () => { location.hash = '#/'; } });
+    openReader(entry, { onExit: () => { location.hash = '#/'; }, onRemove: entry.user ? onRemove : null });
     return;
   }
   closeReader();
   if (h === '#/stats') {
     show('stats');
     screens.stats.scrollTop = 0;
-    renderStats(await getIndex());
+    const idx = await getIndex();
+    renderStats(builtInFailed ? null : idx);
     return;
   }
   show('library');
   const idx = await getIndex();
-  if (!idx) {
-    const shelf = document.getElementById('shelf');
-    shelf.innerHTML = '<div><p>The books could not be loaded. Check the internet connection.</p>' +
-      '<button type="button" class="btn" id="retry">Try again</button></div>';
-    shelf.querySelector('#retry').onclick = () => route();
-    return;
-  }
-  renderLibrary(idx, { onOpen: (id) => { location.hash = '#/read/' + encodeURIComponent(id); } });
+  // Added stories (and the Add tile) still show when the built-in books can't load.
+  renderLibrary(idx || [], {
+    onOpen: openBook,
+    onAdd: () => openAddSheet({
+      onAdded: (entry) => { toast('Added to your shelf'); openBook(entry.id); },
+    }),
+    note: builtInFailed ? '<div class="shelf-note"><p>The books could not be loaded. Check the internet connection.</p>' +
+      '<button type="button" class="btn" id="retry">Try again</button></div>' : '',
+  });
+  const retry = document.getElementById('retry');
+  if (retry) retry.onclick = () => route();
   renderInstall();
 }
 

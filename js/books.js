@@ -1,6 +1,7 @@
 // Loading book data and remembering reading positions.
 import { prepareBook } from './layout.js';
 import { load, save, KEYS } from './storage.js';
+import { getStory } from './stories.js';
 
 let indexPromise = null;
 const bookCache = new Map();
@@ -16,14 +17,18 @@ export function loadIndex() {
 
 export function loadBook(entry) {
   if (!bookCache.has(entry.id)) {
-    const p = fetch(entry.file)
-      .then((r) => { if (!r.ok) throw new Error('book ' + r.status); return r.json(); })
-      .then((b) => { b.unit = b.unit || entry.unit; return prepareBook(b); })
+    // Added stories come from this device's storage, never the network.
+    const p = (entry.user ? getStory(entry.id) : fetch(entry.file)
+      .then((r) => { if (!r.ok) throw new Error('book ' + r.status); return r.json(); }))
+      .then((b) => { b.unit = b.unit || entry.unit; b.user = !!entry.user; return prepareBook(b); })
       .catch((e) => { bookCache.delete(entry.id); throw e; });
     bookCache.set(entry.id, p);
   }
   return bookCache.get(entry.id);
 }
+
+/** Drop a removed story from memory. */
+export const forgetBook = (id) => bookCache.delete(id);
 
 /** Position is anchored to text (chapter, paragraph, word), never to page numbers. */
 export function getPosition(id) {
